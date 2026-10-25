@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0f0f1a">
+  <title>Tower defense · DiviGames</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/static/favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="../brand.css">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a class="logo" href="/play/" title="All DiviGames">
+      <span class="logo-icon"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5zm0 18.5c-3.86-.95-6.5-4.95-6.5-8.5V8.3l6.5-3.25 6.5 3.25V12c0 3.55-2.64 7.55-6.5 8.5z"/></svg></span>
+      <span class="logo-text">DiviGames</span>
+      <span class="logo-page">Tower defense</span>
+    </a>
+    <span class="spacer"></span>
+    <span class="net-badge" title="Testnet: GOLD here has no value">Testnet</span>
+    <span id="conn" class="conn" data-state="off" title="Chain connection">offline</span>
+  </header>
+
+  <section class="card wallet" aria-labelledby="wallet-h">
+    <h2 id="wallet-h" class="visually-hidden">Your play key</h2>
+    <div class="wallet-row">
+      <div class="wallet-id">
+        <span class="label">You</span>
+        <code id="me" class="addr">…</code>
+        <button id="copy-addr" class="ghost small" type="button">Copy</button>
+      </div>
+      <div class="wallet-bal">
+        <span class="label">Balance</span>
+        <strong id="balance">…</strong> <span>GOLD</span>
+        <strong id="balance-td">…</strong> <span>TDGOLD</span>
+        <button id="faucet" type="button">Get GOLD</button>
+      </div>
+    </div>
+    <p id="wallet-msg" class="msg" role="status" hidden></p>
+    <details class="keybox">
+      <summary>Play key</summary>
+      <p class="note">This is a <strong>testnet play key</strong>, made by this page and kept in this browser's
+        storage. It only holds testnet tokens, which have no value. Anyone who can read this browser's storage can use it.
+        Export it to play from another device, or import one you already have.</p>
+      <div class="keyrow">
+        <button id="export" class="ghost" type="button">Show WIF</button>
+        <code id="wif" class="wif" hidden></code>
+      </div>
+      <form id="import" class="keyrow">
+        <label for="import-wif" class="visually-hidden">WIF to import</label>
+        <input id="import-wif" name="wif" autocomplete="off" spellcheck="false" placeholder="Paste a testnet WIF (starts with c)">
+        <button type="submit" class="ghost">Import</button>
+      </form>
+      <p id="key-msg" class="msg" role="status" hidden></p>
+    </details>
+  </section>
+
+  <main>
+    <section class="card" aria-labelledby="play-h">
+      <h2 id="play-h">Play</h2>
+      <div class="hud" aria-live="off">
+        <span>Gold <strong id="h-gold">–</strong></span>
+        <span>Lives <strong id="h-lives">–</strong></span>
+        <span>Wave <strong id="h-wave">–</strong></span>
+        <span>Score <strong id="h-score">–</strong></span>
+      </div>
+      <div id="towers" class="towers" role="radiogroup" aria-label="Tower type"></div>
+      <div class="board-wrap">
+        <canvas id="board" class="board" width="768" height="576" tabindex="0" aria-keyshortcuts="1 2 3 4 Enter Space P"
+          aria-label="Tower defense board. Pick a tower, then click a grass cell to build."></canvas>
+      </div>
+      <p class="note keys">Keyboard: focus the board, move with the arrow keys, build with Enter or Space, pick a tower
+        with 1 to 4, pause with P. On a touch screen, tap a cell to see the tower's range and tap it again to build.
+        Towers stay in this page until you submit the score, so leaving mid-run loses them.</p>
+      <div class="actions">
+        <button id="start" type="button">Start run</button>
+        <button id="pause" class="ghost" type="button" disabled>Pause</button>
+        <button id="faster" class="ghost" type="button" disabled>Speed ×1</button>
+        <button id="submit" type="button" hidden>Submit score</button>
+      </div>
+      <p id="play-msg" class="msg" role="status" hidden></p>
+      <p id="seed-line" class="muted small-text" hidden>Run <code id="run-id"></code> · seed <code id="seed"></code></p>
+      <p id="result" class="banner" hidden></p>
+    </section>
+
+    <section class="card" aria-labelledby="lb-h">
+      <h2 id="lb-h">Leaderboard <span id="lb-week" class="muted"></span></h2>
+      <p class="note" id="lb-note"></p>
+      <p class="muted small-text"><a href="/leaderboard">Leaderboard →</a> every game, on the site</p>
+      <ol id="lb" class="lb"><li class="muted">Loading…</li></ol>
+      <div class="actions">
+        <button id="lb-prev" class="ghost small" type="button">← Earlier week</button>
+        <button id="lb-next" class="ghost small" type="button">Later week →</button>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="my-h">
+      <h2 id="my-h">My runs</h2>
+      <ul id="my" class="games"><li class="muted">Loading…</li></ul>
+    </section>
+  </main>
+
+  <footer class="muted small-text">Chain: <code id="chain-url"></code></footer>
+</body>
+</html>

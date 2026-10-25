@@ -1,0 +1,14 @@
+{
+  "seed": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "placements": [
+    { "tick": 0, "x": 4, "y": 2, "kind": 0 },
+    { "tick": 0, "x": 6, "y": 2, "kind": 0 },
+    { "tick": 900, "x": 8, "y": 2, "kind": 1 },
+    { "tick": 3000, "x": 5, "y": 5, "kind": 0 },
+    { "tick": 4500, "x": 7, "y": 6, "kind": 3 },
+    { "tick": 6500, "x": 9, "y": 6, "kind": 1 },
+    { "tick": 9000, "x": 12, "y": 6, "kind": 3 }
+  ],
+  "outcome": { "score": 3525, "waves_cleared": 9, "lives": 0, "ticks": 9839 },
+  "outcome_rules2": { "score": 4260, "waves_cleared": 11, "lives": 0, "ticks": 11207 }
+}
