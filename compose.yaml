@@ -1,0 +1,9 @@
+# docker compose up --build    then open http://localhost:8083/play/towerdefense/
+# docker compose down           to stop it
+services:
+  towerdefense:
+    build: .
+    # Only this computer can open it. To let your home network in too, make it "8083:8083".
+    ports:
+      - "127.0.0.1:8083:8083"
+    restart: unless-stopped

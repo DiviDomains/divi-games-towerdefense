@@ -1,0 +1,16 @@
+{
+  "name": "divi-games-towerdefense",
+  "private": true,
+  "description": "Build towers against waves. Your browser runs the simulation in WebAssembly, and the node replays the same code to check your score.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "config": {
+    "port": 8083
+  },
+  "scripts": {
+    "start": "node serve.mjs --open"
+  }
+}

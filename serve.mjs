@@ -2,8 +2,10 @@
 // Serves this game on your own computer. It plays on the live Divi Games chain, against the same players as the
 // website.
 //
-// Usage: node serve.mjs                 then open http://127.0.0.1:8080
-//        PORT=9000 node serve.mjs       another port
+// Usage: npm start                      runs this, and opens the game in your browser
+//        node serve.mjs                 the same, without opening the browser
+//        PORT=9000 node serve.mjs       another port (each game has its own default, in package.json)
+//        HOST=0.0.0.0 node serve.mjs    let other computers on your network open it
 //
 // The page only talks to its own address, as on games.divi.domains: it asks this server for /chain/…, and the
 // server passes those requests (and the live block feed) on to the real chain. Everything else is a file from
@@ -12,7 +14,8 @@ import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
 import tls from 'node:tls';
-import { readdirSync, statSync, createReadStream } from 'node:fs';
+import { readdirSync, readFileSync, statSync, createReadStream } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { dirname, extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -113,13 +116,33 @@ server.on('upgrade', (req, sock, head) => {
   sock.on('error', () => up.destroy());
 });
 
+/** This game's own port, from package.json, so all four games can run side by side. */
+function defaultPort() {
+  try {
+    return JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).config?.port ?? 8080;
+  } catch {
+    return 8080;
+  }
+}
+
+/** Opens url in the default browser; a computer with none (a server, a container) just goes without. */
+function openBrowser(url) {
+  const [cmd, ...args] = process.platform === 'darwin' ? ['open', url]
+    : process.platform === 'win32' ? ['cmd', '/c', 'start', '', url]
+    : ['xdg-open', url];
+  spawn(cmd, args, { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
+}
+
 const host = process.env.HOST || '127.0.0.1';
-const port = Number(process.env.PORT || 8080);
+const port = Number(process.env.PORT || defaultPort());
 server.on('error', (e) => {
-  console.error(e.code === 'EADDRINUSE' ? `Port ${port} is in use. Pick another: PORT=9000 node serve.mjs` : e.message);
+  console.error(e.code === 'EADDRINUSE' ? `Port ${port} is in use. Pick another: PORT=${port + 100} node serve.mjs` : e.message);
   process.exit(1);
 });
 server.listen(port, host, () => {
-  const at = `${host}:${server.address().port}`;
-  console.log(`Playing ${GAME} on ${UPSTREAM.host}: open http://${at}/play/${GAME}/\nPress Ctrl-C to stop.`);
+  // 0.0.0.0 listens on every address but is not one a browser can open; this computer is localhost.
+  const name = ['0.0.0.0', '::'].includes(host) ? 'localhost' : host.includes(':') ? `[${host}]` : host;
+  const url = `http://${name}:${server.address().port}/play/${GAME}/`;
+  console.log(`Playing ${GAME} on ${UPSTREAM.host}: open ${url}\nPress Ctrl-C to stop.`);
+  if (process.argv.includes('--open')) openBrowser(url);
 });

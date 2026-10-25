@@ -8,15 +8,35 @@ you play against the same players, with the same testnet GOLD, as on the website
 
 ## Run it
 
-You need [Node.js](https://nodejs.org) 20 or newer and Git. Nothing else gets installed.
+Pick one. Each needs only what it names; nothing else gets installed.
+
+**With Node.js** ([Node.js](https://nodejs.org) 20 or newer, and Git):
 
 ```sh
 git clone https://github.com/DiviDomains/divi-games-towerdefense.git
 cd divi-games-towerdefense
-node serve.mjs
+npm start
 ```
 
-Open http://127.0.0.1:8080 and play. Press **Ctrl-C** in the terminal to stop.
+Your browser opens at http://127.0.0.1:8083/play/towerdefense/. Press **Ctrl-C** in the terminal to stop.
+(`node serve.mjs` does the same without opening the browser. `npm install` is not needed: there are no
+dependencies.)
+
+**With Docker** ([Docker](https://docs.docker.com/get-docker/) with Compose, and Git):
+
+```sh
+git clone https://github.com/DiviDomains/divi-games-towerdefense.git
+cd divi-games-towerdefense
+docker compose up --build
+```
+
+Open http://localhost:8083/play/towerdefense/. Press **Ctrl-C** to stop, or run it in the background with
+`docker compose up --build -d` and stop it with `docker compose down`.
+
+**All four games at once**: each game has its own port (tic-tac-toe 8081, blackjack 8082, tower defense 8083,
+season market 8084), so they run side by side. The
+[Run a game at home](https://games.divi.domains/learn/build-a-game/06-run-it-at-home) lesson has one
+`compose.yaml` that starts all four.
 
 ## How it works
 
@@ -32,11 +52,16 @@ rules, so a changed page can only ever send moves the chain accepts.
 ## Your play key
 
 The page makes a **testnet play key** the first time you open it and keeps it in your browser. Browsers keep it
-per address, so the key at `127.0.0.1:8080` is a new one, not the one you use on games.divi.domains. To play
-with the same GOLD in both places, open **Play key** on the page, press **Show WIF** on one, and paste it into
-the import box on the other. Treat the WIF like a password: anyone who has it can spend that key's GOLD.
+**per address**, so `127.0.0.1:8083` gets a new key with no GOLD: not the one you use on
+games.divi.domains, and not the one another game at home uses. Press **Get GOLD** for some, or keep one
+identity everywhere in either of two ways:
 
-New keys start with no GOLD: press the **faucet** button for some.
+- **Connect a wallet** (Browser Wallet, Web Wallet or Telegram) on each page: you play as your wallet's
+  address wherever you open the game.
+- **Import a key**: open **Play key** on the website, press **Show WIF**, and paste it into the import box on
+  the page here. Treat the WIF like a password: anyone who has it can spend that key's GOLD.
+
+`127.0.0.1` and `localhost` count as different addresses too, so stick to one.
 
 ## Change it
 
@@ -47,8 +72,10 @@ New keys start with no GOLD: press the **faucet** button for some.
 | `sdk/divigames.js` | the client library: keys, signing, sending transactions, reading the chain |
 | `vendor/` | the audited [@noble](https://paulmillr.com/noble/) cryptography libraries the SDK uses |
 | `serve.mjs` | the small server above |
+| `Dockerfile`, `compose.yaml` | the Docker way to run it |
 
-Edit a file and reload the page; there is no build step. The
+Edit a file and reload the page; there is no build step. (With Docker, run `docker compose up --build` again
+after a change, since the image holds a copy of the folder.) The
 [Build a game](https://games.divi.domains/learn/build-a-game) course explains the SDK and how a game talks to
 the chain.
 
@@ -57,13 +84,18 @@ Links to the site's other pages (the leaderboard, your account, the other games)
 ## Options
 
 ```sh
-PORT=9000 node serve.mjs         # another port
-HOST=0.0.0.0 node serve.mjs      # let other computers on your home network open it
+PORT=9000 npm start              # another port
+HOST=0.0.0.0 npm start           # let other computers on your home network open it
 ```
+
+With Docker, change the `ports:` line in `compose.yaml` instead: `"9000:8083"` for another port, or drop
+the `127.0.0.1:` for your home network. Only let your home network in on a network you trust.
 
 ## When something goes wrong
 
-- **"Port 8080 is in use"**: something else has that port. Pick another with `PORT=`.
+- **"Port 8083 is in use"**: the game is already running in another terminal, or something else has the
+  port. Stop the other one, or pick another port with `PORT=`.
+- **`npm start` does not open a browser**: open the address it printed yourself.
 - **"Could not reach https://games.divi.domains"**: your computer is offline, or the site is down.
 - **No balance and the buttons fail**: open the address `serve.mjs` printed. Opening `index.html` as a file
   does not work, because the page needs `/chain` at its own address.

@@ -3,13 +3,15 @@
 //
 // The simulation (crates/dg-td, built as dg_td_wasm.wasm) is the same code the node replays on `submit`, so the
 // score you see locally is the score the chain records. A run is the seed from the chain plus the list of
-// placements you made; nothing else is sent.
+// placements you made; nothing else is sent. Until you submit, the run is also kept in this browser (resume.js), so a
+// reload or a trip to the /play hub picks it up where you left it.
 //
 //   ?chain=http://127.0.0.1:7410        use another chain API root (default: <this origin>/chain; only on localhost, or this site's own origin)
 
 import { Chain, Key, NETWORK, formatAmount, localTime, timeLeft, readableError, setTextWithLinks, faucetFastNote } from '../../sdk/divigames.js';
 import { mountWallets } from '../../sdk/connect.js';
 import { runDeadline } from '../deadlines.js';
+import { readSave, writeSave, clearSave, resumable, rebuild, parseFrame } from './resume.js';
 
 const GAME = 'towerdefense';
 const KEY_STORE = 'dg.playkey.wif';
@@ -32,7 +34,7 @@ const state = {
   decimals: 2,
   tdDecimals: 2,
   /** @type {any} */ wasm: null,
-  /** @type {{id: string, seed: string}|null} */ run: null,
+  /** @type {{id: string, seed: string, rules?: number, player?: string}|null} */ run: null,
   /** @type {{tick: number, x: number, y: number, kind: number}[]} */ placements: [],
   playing: false,
   paused: false,
@@ -50,6 +52,8 @@ const state = {
   clockFrom: Infinity,
   /** @type {number|null} */ currentWeek: null,
   /** @type {any} */ frame: null,
+  /** The last save of this run to the browser was written (false when storage is blocked). */
+  saved: false,
 };
 
 // ---------- small helpers (same shapes as the tic-tac-toe page) ----------
@@ -108,6 +112,24 @@ function storageSet(/** @type {string} */ wif) {
   } catch {
     return false;
   }
+}
+
+/** This browser's localStorage, or null where it is blocked (reading the property can throw in a private window). */
+function store() {
+  try {
+    return localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/** Keep the run in this browser: the seed, rules, placements and the tick now. */
+function persist() {
+  const r = state.run;
+  if (!r || state.submitted || !state.frame) return;
+  state.saved = writeSave(store(), r.player ?? state.me, {
+    run: r.id, seed: r.seed, rules: Number(r.rules ?? 1), placements: state.placements, tick: state.frame.tick, over: state.over,
+  });
 }
 
 function loadKey() {
@@ -286,19 +308,6 @@ async function loadWasm() {
   };
 }
 
-/** Split the flat frame buffer into named parts. Layout is documented in crates/dg-td-wasm/src/lib.rs. */
-function parseFrame(/** @type {Int32Array} */ f) {
-  const [tick, gold, lives, wave, score, done, nc, nt, ns] = f;
-  let o = 9;
-  const creeps = [];
-  for (let i = 0; i < nc; i++, o += 7) creeps.push({ id: f[o], x: f[o + 1], y: f[o + 2], hp: f[o + 3], max: f[o + 4], kind: f[o + 5], slow: f[o + 6] });
-  const towers = [];
-  for (let i = 0; i < nt; i++, o += 3) towers.push({ x: f[o], y: f[o + 1], kind: f[o + 2] });
-  const shots = [];
-  for (let i = 0; i < ns; i++, o += 5) shots.push({ fx: f[o], fy: f[o + 1], tx: f[o + 2], ty: f[o + 3], kind: f[o + 4] });
-  return { tick, gold, lives, wave, score, done: !!done, creeps, towers, shots };
-}
-
 const PLACE_ERRORS = {
   1: 'Too many towers for one run.',
   3: 'The run is over.',
@@ -411,6 +420,7 @@ function selectTower(/** @type {number} */ k) {
 
 function resetRun() {
   state.run = null;
+  state.saved = false;
   state.placements = [];
   state.playing = false;
   state.over = false;
@@ -443,15 +453,25 @@ function beginLocal(/** @type {{id: string, seed: string, rules?: number}} */ r)
     return;
   }
   buildTowerButtons();
-  state.run = r;
+  state.run = { ...r, player: state.me };
   state.placements = [];
   state.playing = true;
   state.paused = false;
   state.over = false;
   state.submitted = false;
+  state.saved = false;
   w.seed(hexBytes(r.seed));
   w.x.td_init();
   state.frame = parseFrame(w.frame());
+  showRun(r);
+  say($('play-msg'), 'Pick a tower, then click a grass cell (on a touch screen, tap it twice: once to see the range, again to build). The run ends when lives hit 0 or every wave has gone by.', 'info');
+  renderHud();
+  draw();
+  requestAnimationFrame(tick);
+}
+
+/** The run line and the buttons for a run in play. */
+function showRun(/** @type {{id: string, seed: string}} */ r) {
   $('run-id').textContent = r.id;
   $('seed').textContent = short(r.seed);
   $('seed-line').hidden = false;
@@ -459,10 +479,46 @@ function beginLocal(/** @type {{id: string, seed: string, rules?: number}} */ r)
   $('submit').hidden = true;
   $('start').disabled = true;
   syncButtons();
-  say($('play-msg'), 'Pick a tower, then click a grass cell (on a touch screen, tap it twice: once to see the range, again to build). The run ends when lives hit 0 or every wave has gone by.', 'info');
+}
+
+/**
+ * Pick up `r`, the chain's open run, from this browser's save: rebuild it and wait, paused, for Resume (or show a
+ * finished run's result and Submit score). False when there is no save for it or the sim refuses the save, which is
+ * then dropped; the caller replays the run from the top.
+ * @param {{id: string, seed: string, rules?: number}} r @param {any} saved
+ */
+function resumeLocal(r, saved) {
+  const w = state.wasm;
+  if (!saved || saved.run !== r.id || saved.seed !== r.seed) return false;
+  const f = rebuild(w.x, { ...saved, rules: Number(r.rules ?? 1) });
+  if (!f) {
+    clearSave(store(), state.me);
+    say($('play-msg'), `The towers saved in this browser for run ${r.id.slice(0, 8)} could not be rebuilt. Press Start to replay it from the top.`, 'error');
+    return false;
+  }
+  buildTowerButtons();
+  state.run = { ...r, player: state.me };
+  state.placements = saved.placements;
+  state.playing = true;
+  state.over = false;
+  state.submitted = false;
+  state.saved = true;
+  state.frame = parseFrame(f);
+  showRun(r);
+  if (state.frame.done) {
+    finishLocal();
+  } else {
+    state.paused = true;
+    syncButtons();
+    const n = state.placements.length;
+    const at = state.frame.wave ? `at wave ${state.frame.wave}` : 'before the first wave';
+    const towers = n ? `with your ${n} tower${n === 1 ? '' : 's'}` : 'with no towers yet';
+    say($('play-msg'), `Resumed run ${r.id.slice(0, 8)} ${at} ${towers}. Press Resume.`, 'info');
+    requestAnimationFrame(tick);
+  }
   renderHud();
   draw();
-  requestAnimationFrame(tick);
+  return true;
 }
 
 function tick() {
@@ -481,6 +537,7 @@ function tick() {
 function finishLocal() {
   state.over = true;
   const f = state.frame;
+  persist();
   syncButtons();
   const banner = $('result');
   const o = state.wasm.simulate(state.placements);
@@ -544,10 +601,13 @@ canvas.addEventListener('keydown', (ev) => {
   draw();
 });
 canvas.addEventListener('blur', () => draw());
-// Towers live only in this page until the score is submitted.
+// The run is kept in this browser as you play; warn on leaving only when it could not be written there.
 addEventListener('beforeunload', (ev) => {
-  if (state.playing && !state.submitted && state.placements.length) ev.preventDefault();
+  if (state.playing && !state.submitted && state.placements.length && !state.saved) ev.preventDefault();
 });
+// Leaving the page (a reload, a closed tab, a phone putting it away) saves the tick it got to.
+addEventListener('pagehide', () => persist());
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') persist(); });
 
 function cellAt(/** @type {PointerEvent|MouseEvent} */ ev) {
   const w = state.wasm;
@@ -578,12 +638,14 @@ function place(/** @type {number} */ x, /** @type {number} */ y) {
   say(msg, '');
   state.placements.push({ tick: at, x, y, kind: state.kind });
   state.frame = parseFrame(w.frame());
+  persist();
   renderHud();
   draw();
 }
 
 $('pause').addEventListener('click', () => {
   state.paused = !state.paused;
+  if (state.paused) persist();
   syncButtons();
 });
 $('faster').addEventListener('click', () => {
@@ -610,12 +672,13 @@ $('start').addEventListener('click', async (ev) => {
     say(msg, 'The game engine has not loaded yet.', 'error');
     return;
   }
-  // An unsubmitted run can be replayed from the top; its seed is already on chain.
+  // An unsubmitted run picks up from this browser's save, or else replays from the top; its seed is already on chain.
   const open = await openRun();
   if (open) {
-    beginLocal(open);
+    if (!resumeLocal(open, readSave(store(), state.me))) beginLocal(open);
     return;
   }
+  clearSave(store(), state.me);
   const receipt = await run(gameAction({ kind: 'start' }), msg, [btn]);
   if (!receipt) return;
   const r = startedRun(receipt) ?? (await openRun());
@@ -631,8 +694,13 @@ $('submit').addEventListener('click', async (ev) => {
   const btn = /** @type {HTMLButtonElement} */ (ev.currentTarget);
   if (!state.run || !state.over || state.submitted) return;
   const receipt = await run(gameAction({ kind: 'submit', run: state.run.id, placements: state.placements }), $('play-msg'), [btn]);
-  if (!receipt) return;
+  if (!receipt) {
+    // Expired or submitted elsewhere: the save is no use any more.
+    checkSave();
+    return;
+  }
   state.submitted = true;
+  clearSave(store(), state.run.player ?? state.me);
   btn.hidden = true;
   $('start').disabled = false;
   $('start').textContent = 'Start new run';
@@ -648,17 +716,47 @@ $('submit').addEventListener('click', async (ev) => {
   refreshMine();
 });
 
+/** The chain's open run for this player as its `{run}` view, or null when it has none. Throws when the chain does not answer. */
+async function openRunView() {
+  const v = await chain.game(GAME, { player: state.me });
+  if (!v?.open) return null;
+  const r = await chain.game(GAME, { run: v.open });
+  return r?.status === 'open' ? r : null;
+}
+
+const runOf = (/** @type {any} */ r) => ({ id: String(r.id), seed: String(r.seed), rules: Number(r.rules ?? 1) });
+
 async function openRun() {
   try {
-    const v = await chain.game(GAME, { player: state.me });
-    if (v?.open) {
-      const r = await chain.game(GAME, { run: v.open });
-      if (r?.status === 'open') return { id: String(r.id), seed: String(r.seed), rules: Number(r.rules ?? 1) };
-    }
+    const r = await openRunView();
+    if (r) return runOf(r);
   } catch {
     /* no open run we can see */
   }
   return null;
+}
+
+/**
+ * Check this browser's saved run against the chain. Picks it up when it is the open run (and nothing is in play), and
+ * drops it when the chain says that run is no longer open: submitted, expired, or not this key's.
+ */
+async function checkSave() {
+  const me = state.me;
+  const saved = readSave(store(), me);
+  if (!saved) return;
+  let r;
+  try {
+    r = await openRunView();
+  } catch {
+    return; // the chain did not answer: keep the save for next time
+  }
+  if (me !== state.me) return;
+  const at = { now: Date.now(), height: 0, rules: { runExpiryMs: state.runExpiryMs, runExpiryBlocks: state.runExpiryBlocks, clockFrom: state.clockFrom } };
+  if (!resumable(saved, r, me, at)) {
+    clearSave(store(), me);
+    return;
+  }
+  if (!state.playing && state.wasm) resumeLocal(runOf(r), saved);
 }
 
 // ---------- leaderboard and my runs ----------
@@ -707,14 +805,14 @@ async function refreshMine() {
     }
     // A run's score goes on chain only when you press Submit score. Until then it stays open for two hours
     // of block time (a run from before the clock rules: RUN_EXPIRY_BLOCKS, or two hours from the switch),
-    // and Start replays it from the top.
+    // and Start picks it up from this browser's save, or replays it from the top.
     const note = (/** @type {any} */ r) => {
       if (r.status === 'scored') return `score ${r.score} · ${r.waves_cleared} waves cleared`;
       const rules = { runExpiryMs: state.runExpiryMs, runExpiryBlocks: state.runExpiryBlocks, clockFrom: state.clockFrom };
       const { ms: due, blocksLeft: left, expired } = runDeadline(r, { now: Date.now(), height, rules });
       if (expired) return 'expired: never submitted';
       const until = due != null ? ` (until ${localTime(due)})` : left != null ? ` (${left} blocks left)` : '';
-      return `in progress: press Start to replay it, then Submit score${until}`;
+      return `in progress: press Start to pick it up, then Submit score${until}`;
     };
     ul.replaceChildren(
       ...(v.runs.length
@@ -751,6 +849,7 @@ function onBlock(/** @type {any} */ block) {
     refreshBoard();
     refreshMine();
   }
+  if (dirty && mine) checkSave();
 }
 
 function setConn(/** @type {boolean} */ on) {
@@ -810,6 +909,7 @@ async function boot() {
     /* defaults stand */
   }
   refreshAll();
+  checkSave();
 }
 
 boot();
