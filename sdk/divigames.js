@@ -412,8 +412,22 @@ export function timeLeft(ms, now = Date.now()) {
 }
 
 /**
- * A chain error with any "block time N" turned into the visitor's local time and how long until it, and a bet's
- * limits in GOLD rather than base units.
+ * The decimals of a token the chain makes itself, or undefined for any other: GOLD 2, TDGOLD 2 (tower defense),
+ * TDIVI 8 (the bridge), and the season tokens S<n>GOLD 2 and S<n>DIVI 8 (crates/dg-market).
+ * @param {string} symbol
+ * @returns {number|undefined}
+ */
+export function tokenDecimals(symbol) {
+  const known = /** @type {Record<string, number>} */ ({ GOLD: 2, TDGOLD: 2, TDIVI: 8 });
+  if (Object.hasOwn(known, symbol)) return known[symbol];
+  const season = /^S\d+(GOLD|DIVI)$/.exec(symbol);
+  return season ? (season[1] === 'GOLD' ? 2 : 8) : undefined;
+}
+
+/**
+ * A chain error with any "block time N" turned into the visitor's local time and how long until it, a bet's limits
+ * in GOLD rather than base units, and an "insufficient" refusal in whole tokens (left as it is for a token whose
+ * decimals `tokenDecimals` doesn't know).
  * @param {string} message
  * @param {number} [now]
  */
@@ -423,7 +437,11 @@ export function readableError(message, now = Date.now()) {
       const left = timeLeft(Number(ms), now);
       return left === 'now' ? localTime(Number(ms)) : `${localTime(Number(ms))} (in ${left})`;
     })
-    .replace(/bet must be (\d+) to (\d+) base units/, (_, lo, hi) => `bet must be ${formatAmount(lo, 2)} to ${formatAmount(hi, 2)} GOLD`);
+    .replace(/bet must be (\d+) to (\d+) base units/, (_, lo, hi) => `bet must be ${formatAmount(lo, 2)} to ${formatAmount(hi, 2)} GOLD`)
+    .replace(/(?:rejected: )?insufficient ([A-Z0-9]+): need (\d+), have (\d+)/, (all, sym, need, have) => {
+      const d = tokenDecimals(sym);
+      return d == null ? all : `Not enough ${sym}: this needs ${formatAmount(need, d)} ${sym} and you have ${formatAmount(have, d)} ${sym}`;
+    });
 }
 
 /** The page where a player logs in with Telegram and links an address. */
