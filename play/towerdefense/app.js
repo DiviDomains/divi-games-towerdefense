@@ -12,6 +12,7 @@ import { Chain, Key, NETWORK, formatAmount, localTime, timeLeft, readableError, 
 import { mountWallets } from '../../sdk/connect.js';
 import { runDeadline } from '../deadlines.js';
 import { readSave, writeSave, clearSave, resumable, rebuild, parseFrame } from './resume.js';
+import { goldShortText, cannotAfford } from './gold.js';
 
 const GAME = 'towerdefense';
 const KEY_STORE = 'dg.playkey.wif';
@@ -391,6 +392,8 @@ function renderHud() {
   $('h-lives').textContent = f ? String(f.lives) : '–';
   $('h-wave').textContent = f ? `${f.wave} / ${w.waves}` : '–';
   $('h-score').textContent = f ? String(f.score) : '–';
+  // Dim the towers this run can't pay for yet.
+  [...$('towers').children].forEach((b, k) => b.classList.toggle('short', !!w && cannotAfford(w.tower(k, 0), f ? f.gold : null)));
 }
 
 // ---------- playing a run ----------
@@ -632,7 +635,8 @@ function place(/** @type {number} */ x, /** @type {number} */ y) {
   const at = state.frame.tick;
   const code = w.x.td_place(x, y, state.kind);
   if (code) {
-    say(msg, /** @type {any} */ (PLACE_ERRORS)[code] ?? `Cannot build there (${code}).`, 'error');
+    const short = code === 8 ? goldShortText(TOWER_NAMES[state.kind], w.tower(state.kind, 0), state.frame.gold) : '';
+    say(msg, short || (/** @type {any} */ (PLACE_ERRORS)[code] ?? `Cannot build there (${code}).`), 'error');
     return;
   }
   say(msg, '');

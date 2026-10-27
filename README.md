@@ -49,6 +49,25 @@ address it came from, so `serve.mjs` does two jobs on that one address:
 Every move you make is a transaction signed in your browser and sent to the live chain. The chain checks the
 rules, so a changed page can only ever send moves the chain accepts.
 
+## Put it on IPFS, or any plain file host
+
+`npm run static` (or `node static.mjs`) writes `dist/`: the game alone, with nothing to run. Each page names the
+chain it plays on in a meta tag and its links are relative, so any host that serves files can serve it, under any
+path. To publish it on IPFS:
+
+```sh
+npm run static
+ipfs add -r --cid-version 1 -Q dist      # prints the folder's CID
+```
+
+and open `/ipfs/<CID>/` on your IPFS node's own gateway, the `http://127.0.0.1:…` address that `ipfs daemon` (or
+IPFS Desktop) prints as "Gateway server listening". The chain only answers
+pages from games.divi.domains and from your own computer (`127.0.0.1` or `localhost`), so a public gateway shows
+the game but cannot play it. `--chain URL` points the copy at another chain, such as one you run yourself;
+`--site URL` is where its links to the leaderboard and the other pages go. The
+[Run every game four ways](https://games.divi.domains/learn/run-every-game) course covers IPFS and Tor step by
+step.
+
 ## Your play key
 
 The page makes a **testnet play key** the first time you open it and keeps it in your browser. Browsers keep it
@@ -72,6 +91,7 @@ identity everywhere in either of two ways:
 | `sdk/divigames.js` | the client library: keys, signing, sending transactions, reading the chain |
 | `vendor/` | the audited [@noble](https://paulmillr.com/noble/) cryptography libraries the SDK uses |
 | `serve.mjs` | the small server above |
+| `static.mjs` | makes the plain-file copy in `dist/` |
 | `Dockerfile`, `compose.yaml` | the Docker way to run it |
 
 Edit a file and reload the page; there is no build step. (With Docker, run `docker compose up --build` again

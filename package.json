@@ -11,6 +11,7 @@
     "port": 8083
   },
   "scripts": {
-    "start": "node serve.mjs --open"
+    "start": "node serve.mjs --open",
+    "static": "node static.mjs"
   }
 }

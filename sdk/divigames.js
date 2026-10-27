@@ -488,7 +488,41 @@ export function setTextWithLinks(/** @type {HTMLElement} */ node, /** @type {str
  * @typedef {{address: string, nonce: number, next_nonce: number, balances: Record<string, string>, session: Session|null}} Account
  */
 
+/**
+ * The http(s) address in the page's `<meta name="…" content="…">`, without a trailing slash, or undefined.
+ * A game published as plain files (on IPFS, say) has no /chain or site pages of its own, so
+ * `scripts/export-clients.mjs --static` writes `divigames-chain` and `divigames-site` tags into it. The tags are
+ * part of the published page, so only whoever publishes the page can set them.
+ * @param {string} name
+ * @param {{querySelector: (s: string) => any}|undefined} [doc]
+ */
+export function pageSetting(name, doc = globalThis.document) {
+  const raw = doc?.querySelector?.(`meta[name="${name}"]`)?.getAttribute('content');
+  if (!raw) return undefined;
+  let u;
+  try {
+    u = new URL(raw);
+  } catch {
+    return undefined;
+  }
+  if (!/^https?:$/.test(u.protocol) || u.username || u.password) return undefined;
+  return u.origin + u.pathname.replace(/\/+$/, '');
+}
+
+/**
+ * A link to a page of the site (`/leaderboard`, `/explorer/tx/…`): relative on the site and in the stand-alone
+ * clients, whose server sends site pages on, and on the `divigames-site` the page names when it is plain files.
+ * @param {string} path starting with /
+ * @param {{querySelector: (s: string) => any}|undefined} [doc]
+ */
+export function siteUrl(path, doc = globalThis.document) {
+  const site = pageSetting('divigames-site', doc);
+  return site ? site + path : path;
+}
+
 function defaultBaseUrl() {
+  const named = pageSetting('divigames-chain');
+  if (named) return named;
   const loc = globalThis.location;
   if (loc && /^https?:$/.test(loc.protocol)) return loc.origin + '/chain';
   return 'http://127.0.0.1:7410';
@@ -545,7 +579,9 @@ export function chainFromSearch(search, origin = globalThis.location?.origin ?? 
 export class Chain {
   /**
    * @param {string} [baseUrl] API root, e.g. "https://games.divi.domains/chain".
-   *   Defaults to `<this page's origin>/chain` in a browser and http://127.0.0.1:7410 elsewhere.
+   *   Defaults to the page's `divigames-chain` meta tag (see {@link pageSetting}), else `<this page's origin>/chain`
+   *   in a browser and http://127.0.0.1:7410 elsewhere. A chain named by the tag is the page's own default, not a
+   *   development chain: it is not marked `local`, and deposits still go only to the pinned BRIDGE_ADDRESS.
    * @param {{chain?: string}} [opts] chain id used by send() (default CHAIN_ID)
    */
   constructor(baseUrl = defaultBaseUrl(), opts = {}) {
