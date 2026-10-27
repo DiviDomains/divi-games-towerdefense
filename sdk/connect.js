@@ -16,7 +16,7 @@ const { Key, CHAIN_ID, NETWORK, verifyMessage, recoverMessageSigner, addressFrom
 export const WEB_WALLET_ORIGIN = 'https://services.divi.domains';
 export const WEB_WALLET_URL = `${WEB_WALLET_ORIGIN}/${NETWORK}/wallet/`;
 export const TELEGRAM_BOT = 'divi_wallet_bot';
-export const EXTENSION_URL = 'https://browser.divi.domains/';
+export const EXTENSION_URL = 'https://browser.irondivi.com/';
 
 export const WALLETS = /** @type {const} */ ({
   extension: 'IronDivi Browser Wallet',
